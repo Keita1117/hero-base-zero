@@ -1,0 +1,6 @@
+.tri_model_snapshots/
+.env
+.env.*
+*.log
+.DS_Store
+Thumbs.db

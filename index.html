@@ -1,0 +1,162 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+  <meta name="theme-color" content="#0D1B2A">
+  <meta name="description" content="4さいから あそんで まなべる かっこいい ヒーロー ひみつきち ミッションパッド">
+  <meta name="robots" content="noindex, nofollow">
+  <title>HERO BASE ZERO - ひみつきち ミッションパッド</title>
+  <link rel="manifest" href="./manifest.webmanifest">
+  <link rel="icon" href="./icons/icon.svg" type="image/svg+xml">
+  <link rel="apple-touch-icon" href="./icons/icon-192.png">
+  <link rel="stylesheet" href="./css/styles.css">
+</head>
+<body>
+  <div class="app-shell">
+    <header class="top-command-bar">
+      <div class="top-bar-left">
+        <button type="button" id="btn-home" class="btn-toy btn-cyan top-btn hidden" aria-label="ひみつきち ホームへ もどる">
+          🏠 きちへ
+        </button>
+        <div class="brand-badge">
+          <span class="brand-bolt" aria-hidden="true">⚡</span>
+          <span class="brand-title">HERO BASE ZERO</span>
+        </div>
+      </div>
+
+      <div class="top-bar-right">
+        <div id="pill-energy" class="hud-pill hud-energy" aria-label="ヒーロー エネルギー">
+          <span aria-hidden="true">⚡</span>
+          <span id="hud-energy-val">0</span>
+        </div>
+        <div id="pill-timer" class="hud-pill hud-timer" aria-label="のこり じかん">
+          <span aria-hidden="true">🕒</span>
+          <span id="hud-timer-val">15:00</span>
+        </div>
+        <button type="button" id="btn-mute" class="btn-toy btn-slate icon-pill-btn" aria-label="おとの オン オフ">
+          🔊
+        </button>
+        <button type="button" id="btn-parent" class="btn-toy btn-slate top-btn" aria-label="保護者メニュー">
+          ⚙️ おとな
+        </button>
+      </div>
+    </header>
+
+    <section class="companion-bubble" aria-live="polite">
+      <span class="bubble-tag" aria-hidden="true">🦖 レックス・ゼロ</span>
+      <p id="companion-bubble-text">ひみつきちへ ようこそ！ どの ドックから あそぶ？</p>
+    </section>
+
+    <main id="app-main" class="app-main" tabindex="-1"></main>
+  </div>
+
+  <!-- 保護者ゲートダイアログ（掛け算認証） -->
+  <dialog id="parent-gate-dialog" class="hero-dialog" aria-labelledby="gate-title" closedby="any">
+    <div class="hero-dialog-inner">
+      <h2 id="gate-title">おとなの かくにん</h2>
+      <p class="dialog-subtext">保護者パネルを開くため、かけ算の答えを入力してください。</p>
+      <div id="gate-question" class="gate-question">3 × 4 = ?</div>
+      <div class="gate-input-row">
+        <input type="number" id="gate-answer-input" inputmode="numeric" class="gate-input" aria-label="かけ算の答え" autocomplete="off">
+      </div>
+      <div id="gate-error" class="gate-error" aria-live="polite"></div>
+      <div class="btn-row">
+        <button type="button" id="btn-gate-cancel" class="btn-toy btn-slate">やめる</button>
+        <button type="button" id="btn-gate-submit" class="btn-toy btn-emerald" autofocus>ひらく</button>
+      </div>
+    </div>
+  </dialog>
+
+  <!-- 保護者コマンドセンター -->
+  <dialog id="parent-dialog" class="hero-dialog parent-dialog" aria-labelledby="parent-title" closedby="closerequest">
+    <div class="hero-dialog-inner">
+      <div class="parent-header">
+        <h2 id="parent-title">⚙️ 保護者コマンドセンター</h2>
+        <button type="button" id="btn-parent-close" class="btn-toy btn-cyan">とじる</button>
+      </div>
+
+      <div class="parent-sections">
+        <section class="parent-card">
+          <h3>お子さまプロフィール・設定</h3>
+          <label class="field-label" for="parent-child-name">呼び名（ひらがな・カタカナ推奨 / 12文字まで）</label>
+          <div class="field-row">
+            <input type="text" id="parent-child-name" maxlength="12" class="text-field" placeholder="たいちょう">
+            <button type="button" id="btn-save-name" class="btn-toy btn-emerald">保存</button>
+          </div>
+
+          <label class="field-label" for="parent-timer-select">1回のプレイ制限（自律おやすみタイマー）</label>
+          <div class="field-row">
+            <select id="parent-timer-select" class="text-field">
+              <option value="0">制限なし（オフ）</option>
+              <option value="10">10分</option>
+              <option value="15">15分（標準）</option>
+              <option value="20">20分</option>
+              <option value="30">30分</option>
+            </select>
+            <button type="button" id="btn-reset-timer" class="btn-toy btn-cyan">タイマー再スタート</button>
+            <button type="button" id="btn-test-sleep" class="btn-toy btn-gold">おやすみ画面テスト</button>
+          </div>
+
+          <div class="toggle-grid">
+            <label class="toggle-item">
+              <input type="checkbox" id="chk-sound">
+              <span>効果音（Web Audio）</span>
+            </label>
+            <label class="toggle-item">
+              <input type="checkbox" id="chk-voice">
+              <span>音声ガイド（日本語 / 英語）</span>
+            </label>
+            <label class="toggle-item">
+              <input type="checkbox" id="chk-reduced-motion">
+              <span>アニメーションをひかえめにする</span>
+            </label>
+          </div>
+        </section>
+
+        <section class="parent-card">
+          <h3>きょう・これまでの活動サマリー</h3>
+          <div id="parent-stats-box" class="parent-stats-grid"></div>
+        </section>
+
+        <section class="parent-card">
+          <h3>データ管理（バックアップ / 復元）</h3>
+          <div class="btn-row">
+            <button type="button" id="btn-export-json" class="btn-toy btn-cyan">📤 JSON書き出し</button>
+            <label for="input-import-json" class="btn-toy btn-slate">📥 JSON読み込み</label>
+            <input type="file" id="input-import-json" accept=".json,application/json" class="sr-only-input">
+            <button type="button" id="btn-reset-all" class="btn-toy btn-red">🗑️ 全データ初期化</button>
+          </div>
+          <p id="parent-io-status" class="dialog-subtext" aria-live="polite"></p>
+        </section>
+      </div>
+    </div>
+  </dialog>
+
+  <!-- 自律おやすみモーダル（子ども向け漢字ゼロ） -->
+  <dialog id="sleep-dialog" class="hero-dialog sleep-dialog" aria-labelledby="sleep-title" closedby="none">
+    <div class="hero-dialog-inner sleep-inner">
+      <h2 id="sleep-title">🌙 おやすみ モード</h2>
+      <div id="sleep-mech-slot" class="sleep-mech-slot"></div>
+      <p class="sleep-message">きょうは たくさん がんばったね！ レックス・ゼロ も ねむくなったよ。また あした あそぼうね！</p>
+      <button type="button" id="btn-sleep-unlock" class="btn-toy btn-gold" autofocus>
+        🔓 おとなが かいじょする
+      </button>
+    </div>
+  </dialog>
+
+  <!-- メカ進化お祝いモーダル（子ども向け漢字ゼロ） -->
+  <dialog id="evolve-dialog" class="hero-dialog evolve-dialog" aria-labelledby="evolve-title" closedby="any">
+    <div class="hero-dialog-inner evolve-inner">
+      <h2 id="evolve-title">🎉 メカ しんか だいせいこう！</h2>
+      <div id="evolve-mech-slot" class="evolve-mech-slot"></div>
+      <p id="evolve-desc" class="sleep-message"></p>
+      <button type="button" id="btn-evolve-ok" class="btn-toy btn-emerald" autofocus>
+        ⚡ やったー！
+      </button>
+    </div>
+  </dialog>
+
+  <script type="module" src="./js/app.js"></script>
+</body>
+</html>
