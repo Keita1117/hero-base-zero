@@ -1,23 +1,25 @@
 import {
-  MECH_EVOLUTIONS,
+  ATTRACTIONS,
+  HERO_STICKERS,
+  KITCHEN_ITEMS,
   MECH_COLORS,
+  MECH_EVOLUTIONS,
   MECH_PARTS,
 } from './data.js';
 
 const VALID_TIMER_MINUTES = new Set([0, 10, 15, 20, 30]);
 const VALID_COLOR_IDS = new Set(MECH_COLORS.map((c) => c.id));
 const VALID_PART_IDS = new Set(MECH_PARTS.map((p) => p.id));
+const VALID_STICKER_IDS = new Set(HERO_STICKERS.map((s) => s.id));
+const VALID_ATTRACTION_IDS = new Set(ATTRACTIONS.map((a) => a.id));
 
 const DAILY_MISSION_POOL = [
-  { id: 'm_hiragana_trace', dockId: 'hiragana', title: 'ひらがなを 2かい なぞろう！', icon: '⚡', targetCount: 2, rewardEnergy: 30 },
-  { id: 'm_hiragana_word', dockId: 'hiragana', title: 'ことばクイズを 2かい クリア！', icon: '🔤', targetCount: 2, rewardEnergy: 30 },
-  { id: 'm_math_solve', dockId: 'math', title: 'かず・けいさん 2もん とこう！', icon: '🔢', targetCount: 2, rewardEnergy: 30 },
-  { id: 'm_clock_read', dockId: 'math', title: 'とけいクイズを 2もん クリア！', icon: '🕒', targetCount: 2, rewardEnergy: 30 },
-  { id: 'm_robo_clear', dockId: 'robo', title: 'ロボそうじゅう 1ステージ クリア！', icon: '🤖', targetCount: 1, rewardEnergy: 35 },
-  { id: 'm_english_play', dockId: 'english', title: 'エイゴで 3かい あそぼう！', icon: '🚀', targetCount: 3, rewardEnergy: 30 },
-  { id: 'm_scanner_find', dockId: 'scanner', title: 'たんけんカメラで 1つ みつけよう！', icon: '📷', targetCount: 1, rewardEnergy: 35 },
-  { id: 'm_studio_create', dockId: 'studio', title: 'うごく え か ビートを つくろう！', icon: '🎨', targetCount: 1, rewardEnergy: 30 },
-  { id: 'm_habit_check', dockId: 'habits', title: 'まいにち しれいを 1つ たっせい！', icon: '🦷', targetCount: 1, rewardEnergy: 30 },
+  { id: 'm_kana', dockId: 'monster-kana', title: 'ひらがな 2かい', icon: '🦖', targetCount: 2, rewardEnergy: 30 },
+  { id: 'm_math', dockId: 'turbo-math', title: 'かずレース 2かい', icon: '🏎️', targetCount: 2, rewardEnergy: 30 },
+  { id: 'm_robo', dockId: 'robo-rescue', title: 'ロボがったい 1かい', icon: '🤖', targetCount: 1, rewardEnergy: 35 },
+  { id: 'm_kitchen', dockId: 'hero-kitchen', title: 'りょうり 1かい', icon: '🍔', targetCount: 1, rewardEnergy: 35 },
+  { id: 'm_studio', dockId: 'magic-studio', title: 'おえかき 1かい', icon: '🎨', targetCount: 1, rewardEnergy: 30 },
+  { id: 'm_habit', dockId: 'habit-base', title: 'しれい 1つ', icon: '🏝️', targetCount: 1, rewardEnergy: 30 },
 ];
 
 export function getLocalDateKey(date = new Date()) {
@@ -90,24 +92,108 @@ export function getDailyMissions(dateStr) {
     const j = Math.floor(nextRand() * (i + 1));
     [pool[i], pool[j]] = [pool[j], pool[i]];
   }
+  return pool.slice(0, 3);
+}
 
-  const chosen = [];
-  const usedDocks = new Set();
-  for (const item of pool) {
-    if (!usedDocks.has(item.dockId)) {
-      chosen.push(item);
-      usedDocks.add(item.dockId);
-    }
-    if (chosen.length === 3) break;
+export function advanceStarGauge(currentStars) {
+  const s = Math.max(0, Math.floor(Number(currentStars) || 0));
+  const next = s + 1;
+  if (next >= 3) {
+    return { stars: 0, capsuleReady: true };
   }
-  for (const item of pool) {
-    if (chosen.length >= 3) break;
-    if (!chosen.some((m) => m.id === item.id)) {
-      chosen.push(item);
-    }
+  return { stars: next, capsuleReady: false };
+}
+
+export function pickNewSticker(ownedIds = [], rng = Math.random) {
+  const owned = new Set(Array.isArray(ownedIds) ? ownedIds : []);
+  const unowned = HERO_STICKERS.filter((st) => !owned.has(st.id));
+  const pool = unowned.length > 0 ? unowned : HERO_STICKERS;
+  return pool[Math.floor(rng() * pool.length)] || HERO_STICKERS[0];
+}
+
+function randInt(min, max, rng) {
+  return Math.floor(rng() * (max - min + 1)) + min;
+}
+
+function shuffleWithRng(arr, rng) {
+  const copy = [...arr];
+  for (let i = copy.length - 1; i > 0; i -= 1) {
+    const j = Math.floor(rng() * (i + 1));
+    [copy[i], copy[j]] = [copy[j], copy[i]];
+  }
+  return copy;
+}
+
+export function generateRaceWave(level = 1, rng = Math.random) {
+  const lv = Math.max(1, Math.min(3, Math.floor(Number(level) || 1)));
+  const isAdd = lv >= 2 && rng() > 0.4;
+  let a = 1;
+  let b = 0;
+  let answer = 1;
+
+  if (isAdd) {
+    const maxTerm = lv === 2 ? 4 : 6;
+    a = randInt(1, maxTerm, rng);
+    b = randInt(1, maxTerm, rng);
+    answer = a + b;
+  } else {
+    const minN = lv === 1 ? 1 : lv === 2 ? 3 : 5;
+    const maxN = lv === 1 ? 5 : lv === 2 ? 9 : 14;
+    answer = randInt(minN, maxN, rng);
+    a = answer;
   }
 
-  return chosen;
+  const laneSet = new Set([answer]);
+  let guard = 0;
+  while (laneSet.size < 3 && guard < 80) {
+    guard += 1;
+    const offset = randInt(-3, 3, rng);
+    const cand = Math.max(1, answer + offset);
+    laneSet.add(cand);
+  }
+  for (let v = 1; laneSet.size < 3; v += 1) {
+    laneSet.add(v);
+  }
+
+  return {
+    level: lv,
+    isAdd,
+    a,
+    b,
+    answer,
+    lanes: shuffleWithRng([...laneSet], rng),
+  };
+}
+
+const CUSTOMER_EMOJIS = ['🦖', '🤖', '🦁', '🐼', '🚀', '🥷'];
+
+export function generateKitchenOrder(rng = Math.random) {
+  const count = rng() > 0.45 ? 3 : 2;
+  const shuffled = shuffleWithRng(KITCHEN_ITEMS, rng);
+  const items = shuffled.slice(0, count);
+  const customerEmoji = CUSTOMER_EMOJIS[randInt(0, CUSTOMER_EMOJIS.length - 1, rng)];
+  return {
+    customerEmoji,
+    items,
+  };
+}
+
+export function snapClockHandAngle(angleDeg, allowHalf = false) {
+  let deg = Number(angleDeg);
+  if (!Number.isFinite(deg)) deg = 0;
+  deg = ((deg % 360) + 360) % 360;
+
+  if (allowHalf) {
+    const step15 = Math.round(deg / 15) % 24;
+    let hour = Math.floor(step15 / 2);
+    if (hour === 0) hour = 12;
+    const minute = step15 % 2 === 1 ? 30 : 0;
+    return { hour, minute };
+  }
+
+  let hour = Math.round(deg / 30) % 12;
+  if (hour === 0) hour = 12;
+  return { hour, minute: 0 };
 }
 
 export function simulateRoboPath(stage, commands = []) {
@@ -149,7 +235,10 @@ export function simulateRoboPath(stage, commands = []) {
     };
   }
   const cmds = Array.isArray(commands) ? commands : [];
-  const obstacles = new Set((stage.obstacles || []).map(([ox, oy]) => `${ox},${oy}`));
+  const rawObs = Array.isArray(stage.obstacles) ? stage.obstacles : [];
+  const obstacles = new Set(
+    rawObs.filter((o) => Array.isArray(o) && o.length >= 2).map(([ox, oy]) => `${ox},${oy}`)
+  );
   let x = startX;
   let y = startY;
   const steps = [[x, y]];
@@ -162,13 +251,10 @@ export function simulateRoboPath(stage, commands = []) {
   };
 
   for (let i = 0; i < cmds.length; i += 1) {
-    const cmd = cmds[i];
-    const d = delta[cmd];
+    const d = delta[cmds[i]];
     if (!d) continue;
-
     const nx = x + d[0];
     const ny = y + d[1];
-
     if (nx < 0 || nx >= cols || ny < 0 || ny >= rows) {
       return {
         steps,
@@ -180,7 +266,6 @@ export function simulateRoboPath(stage, commands = []) {
         failedAtStep: i,
       };
     }
-
     if (obstacles.has(`${nx},${ny}`)) {
       return {
         steps,
@@ -192,12 +277,10 @@ export function simulateRoboPath(stage, commands = []) {
         failedAtStep: i,
       };
     }
-
     x = nx;
     y = ny;
     steps.push([x, y]);
-
-    if (x === stage.goal[0] && y === stage.goal[1]) {
+    if (x === goalX && y === goalY) {
       return {
         steps,
         finalPos: [x, y],
@@ -213,25 +296,12 @@ export function simulateRoboPath(stage, commands = []) {
   return {
     steps,
     finalPos: [x, y],
-    reachedGoal: x === stage.goal[0] && y === stage.goal[1],
+    reachedGoal: x === goalX && y === goalY,
     hitWall: false,
     hitObstacle: false,
     outOfBounds: false,
     failedAtStep: -1,
   };
-}
-
-function randInt(min, max, rng) {
-  return Math.floor(rng() * (max - min + 1)) + min;
-}
-
-function shuffleWithRng(arr, rng) {
-  const copy = [...arr];
-  for (let i = copy.length - 1; i > 0; i -= 1) {
-    const j = Math.floor(rng() * (i + 1));
-    [copy[i], copy[j]] = [copy[j], copy[i]];
-  }
-  return copy;
 }
 
 function buildUniqueNumericOptions(answer, minVal, maxVal, rng) {
@@ -270,7 +340,7 @@ export function generateMathQuestion(mode = 'count', level = 1, rng = Math.rando
       a,
       b,
       emoji,
-      prompt: `${a} と ${b} を がったい！ ぜんぶで いくつ？`,
+      prompt: `${a} ＋ ${b} ＝ ？`,
       answer,
       options: buildUniqueNumericOptions(answer, 1, Math.max(10, answer + 4), rng),
     };
@@ -288,7 +358,7 @@ export function generateMathQuestion(mode = 'count', level = 1, rng = Math.rando
       a,
       b,
       emoji,
-      prompt: `${a}こ から ${b}こ わーぷ！ のこりは いくつ？`,
+      prompt: `${a} − ${b} ＝ ？`,
       answer,
       options: buildUniqueNumericOptions(answer, 0, Math.max(6, a), rng),
     };
@@ -302,7 +372,7 @@ export function generateMathQuestion(mode = 'count', level = 1, rng = Math.rando
     level: lv,
     count: answer,
     emoji,
-    prompt: 'タップして かぞえてみよう！ ぜんぶで いくつ？',
+    prompt: `${answer} を えらぼう！`,
     answer,
     options: buildUniqueNumericOptions(answer, 1, Math.max(8, maxCount), rng),
   };
@@ -412,7 +482,11 @@ export function evaluateTraceCoverage(strokes, points = [], tolerance = 0.16) {
 
   for (const [cx, cy] of checkpoints) {
     let hit = false;
-    for (const [px, py] of points) {
+    for (const pt of points) {
+      if (!Array.isArray(pt) || pt.length < 2) continue;
+      const px = Number(pt[0]);
+      const py = Number(pt[1]);
+      if (!Number.isFinite(px) || !Number.isFinite(py)) continue;
       const dx = px - cx;
       const dy = py - cy;
       if (dx * dx + dy * dy <= tolSq) {
@@ -468,19 +542,23 @@ function sanitizeCountMap(obj) {
     if (!isSafeKey(key)) continue;
     const rawNum = Number(v);
     const n = Number.isFinite(rawNum) ? Math.max(0, Math.min(999999, Math.floor(rawNum))) : 0;
-    out[key] = n;
+    Object.defineProperty(out, key, { value: n, enumerable: true, writable: true, configurable: true });
   }
   return out;
 }
 
 export function createDefaultState(todayKey = getLocalDateKey()) {
   return {
-    version: 1,
+    version: 2,
     childName: 'たいちょう',
     timerMinutes: 15,
     energy: 0,
+    stars: 0,
+    stickers: ['s01'],
+    placedStickers: [{ id: 's01', x: 0.2, y: 0.65 }],
     soundEnabled: true,
     voiceEnabled: true,
+    bgmEnabled: false,
     reducedMotion: false,
     mechColor: 'crimson',
     mechPart: 'none',
@@ -504,6 +582,7 @@ export function sanitizeProfile(raw) {
   const cleanName = sanitizeString(raw.childName, 12);
   const timerCandidate = Number(raw.timerMinutes);
   const energyCandidate = Number(raw.energy);
+  const starsCandidate = Number(raw.stars);
 
   const unlockedSet = new Set(['none']);
   if (Array.isArray(raw.unlockedParts)) {
@@ -514,6 +593,28 @@ export function sanitizeProfile(raw) {
 
   const mechColor = VALID_COLOR_IDS.has(raw.mechColor) ? raw.mechColor : 'crimson';
   const mechPart = unlockedSet.has(raw.mechPart) ? raw.mechPart : 'none';
+
+  const stickersSet = new Set(['s01']);
+  if (Array.isArray(raw.stickers)) {
+    for (const s of raw.stickers) {
+      if (VALID_STICKER_IDS.has(s)) stickersSet.add(s);
+    }
+  }
+
+  const placedStickers = Array.isArray(raw.placedStickers) ? [] : [...base.placedStickers];
+  if (Array.isArray(raw.placedStickers)) {
+    for (const item of raw.placedStickers.slice(0, 30)) {
+      if (!item || typeof item !== 'object' || !VALID_STICKER_IDS.has(item.id)) continue;
+      const x = Number(item.x);
+      const y = Number(item.y);
+      if (!Number.isFinite(x) || !Number.isFinite(y)) continue;
+      placedStickers.push({
+        id: item.id,
+        x: Math.max(0.05, Math.min(0.95, x)),
+        y: Math.max(0.05, Math.min(0.95, y)),
+      });
+    }
+  }
 
   const completedRoboStages = Array.isArray(raw.completedRoboStages)
     ? [...new Set(raw.completedRoboStages.map((n) => Math.floor(Number(n))).filter((n) => n >= 1 && n <= 12))]
@@ -539,17 +640,29 @@ export function sanitizeProfile(raw) {
     }
   }
 
+  const rawDockCounts = sanitizeCountMap(raw.dockCounts);
+  const dockCounts = {};
+  for (const [k, v] of Object.entries(rawDockCounts)) {
+    if (VALID_ATTRACTION_IDS.has(k) && isSafeKey(k)) {
+      dockCounts[k] = v;
+    }
+  }
+
   const dateMatch = typeof raw.dailyDate === 'string' && /^\d{4}-\d{2}-\d{2}$/.test(raw.dailyDate)
     ? raw.dailyDate
     : base.dailyDate;
 
   return {
-    version: 1,
+    version: 2,
     childName: cleanName || base.childName,
     timerMinutes: VALID_TIMER_MINUTES.has(timerCandidate) ? timerCandidate : base.timerMinutes,
     energy: Number.isFinite(energyCandidate) ? Math.max(0, Math.min(999999, Math.floor(energyCandidate))) : 0,
+    stars: Number.isFinite(starsCandidate) ? Math.max(0, Math.min(2, Math.floor(starsCandidate))) : 0,
+    stickers: [...stickersSet],
+    placedStickers,
     soundEnabled: raw.soundEnabled === undefined ? true : Boolean(raw.soundEnabled),
     voiceEnabled: raw.voiceEnabled === undefined ? true : Boolean(raw.voiceEnabled),
+    bgmEnabled: Boolean(raw.bgmEnabled),
     reducedMotion: Boolean(raw.reducedMotion),
     mechColor,
     mechPart,
@@ -560,7 +673,7 @@ export function sanitizeProfile(raw) {
     dailyHabitLog,
     missionProgress: sanitizeCountMap(raw.missionProgress),
     claimedMissions,
-    dockCounts: sanitizeCountMap(raw.dockCounts),
+    dockCounts,
   };
 }
 

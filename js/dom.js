@@ -18,7 +18,14 @@ export function el(tag, attrs = {}, children = []) {
     } else if (k === 'text') {
       node.textContent = String(v);
     } else if (k === 'style' && typeof v === 'object') {
-      Object.assign(node.style, v);
+      for (const [sk, sv] of Object.entries(v)) {
+        if (sv === undefined || sv === null) continue;
+        if (sk.startsWith('--')) {
+          node.style.setProperty(sk, String(sv));
+        } else {
+          node.style[sk] = String(sv);
+        }
+      }
     } else if (k.startsWith('on')) {
       const eventName = k.slice(2).toLowerCase();
       if (SAFE_EVENTS.has(eventName) && typeof v === 'function') {

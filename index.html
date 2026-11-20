@@ -3,10 +3,10 @@
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
-  <meta name="theme-color" content="#0D1B2A">
-  <meta name="description" content="4さいから あそんで まなべる かっこいい ヒーロー ひみつきち ミッションパッド">
+  <meta name="theme-color" content="#0E294B">
+  <meta name="description" content="4さいから ちょっかん そうさで あそんで まなべる ヒーロー ひみつきち ゲーム">
   <meta name="robots" content="noindex, nofollow">
-  <title>HERO BASE ZERO - ひみつきち ミッションパッド</title>
+  <title>HERO BASE ZERO</title>
   <link rel="manifest" href="./manifest.webmanifest">
   <link rel="icon" href="./icons/icon.svg" type="image/svg+xml">
   <link rel="apple-touch-icon" href="./icons/icon-192.png">
@@ -14,42 +14,54 @@
 </head>
 <body>
   <div class="app-shell">
-    <header class="top-command-bar">
-      <div class="top-bar-left">
-        <button type="button" id="btn-home" class="btn-toy btn-cyan top-btn hidden" aria-label="ひみつきち ホームへ もどる">
-          🏠 きちへ
+    <header class="game-top-hud">
+      <div class="hud-left">
+        <button type="button" id="btn-home" class="btn-toy btn-cyan hud-icon-btn hidden" aria-label="ホームへ もどる">
+          🏠
         </button>
-        <div class="brand-badge">
-          <span class="brand-bolt" aria-hidden="true">⚡</span>
-          <span class="brand-title">HERO BASE ZERO</span>
+        <div id="star-capsule-meter" class="star-capsule-meter" aria-label="カプセル スター">
+          <span class="hud-star" data-star="1">☆</span>
+          <span class="hud-star" data-star="2">☆</span>
+          <span class="hud-star" data-star="3">☆</span>
+          <span class="hud-capsule-gift" aria-hidden="true">🎁</span>
         </div>
-      </div>
-
-      <div class="top-bar-right">
-        <div id="pill-energy" class="hud-pill hud-energy" aria-label="ヒーロー エネルギー">
+        <div id="pill-energy" class="hud-pill hud-energy" aria-label="エネルギー">
           <span aria-hidden="true">⚡</span>
           <span id="hud-energy-val">0</span>
         </div>
+      </div>
+
+      <div class="hud-right">
         <div id="pill-timer" class="hud-pill hud-timer" aria-label="のこり じかん">
           <span aria-hidden="true">🕒</span>
           <span id="hud-timer-val">15:00</span>
         </div>
-        <button type="button" id="btn-mute" class="btn-toy btn-slate icon-pill-btn" aria-label="おとの オン オフ">
+        <button type="button" id="btn-bgm" class="btn-toy btn-slate hud-icon-btn" aria-label="おんがく オン オフ">
+          🎵
+        </button>
+        <button type="button" id="btn-mute" class="btn-toy btn-slate hud-icon-btn" aria-label="おと オン オフ">
           🔊
         </button>
-        <button type="button" id="btn-parent" class="btn-toy btn-slate top-btn" aria-label="保護者メニュー">
-          ⚙️ おとな
+        <button type="button" id="btn-parent" class="btn-toy btn-slate hud-icon-btn" aria-label="おとな せってい">
+          ⚙️
         </button>
       </div>
     </header>
 
-    <section class="companion-bubble" aria-live="polite">
-      <span class="bubble-tag" aria-hidden="true">🦖 レックス・ゼロ</span>
-      <p id="companion-bubble-text">ひみつきちへ ようこそ！ どの ドックから あそぶ？</p>
-    </section>
-
-    <main id="app-main" class="app-main" tabindex="-1"></main>
+    <main id="app-main" class="game-viewport" tabindex="-1"></main>
   </div>
+
+  <!-- 3スター 超合金ガチャカプセル開封モーダル -->
+  <dialog id="capsule-dialog" class="hero-dialog capsule-dialog" aria-labelledby="capsule-title" closedby="none">
+    <div class="hero-dialog-inner capsule-inner">
+      <h2 id="capsule-title">🎁 ヒーロー カプセル ゲット！</h2>
+      <div id="capsule-stage" class="capsule-stage"></div>
+      <p id="capsule-caption" class="capsule-caption">カプセルを 3かい タップして わろう！</p>
+      <button type="button" id="btn-capsule-ok" class="btn-toy btn-emerald hidden">
+        ✨ やったー！
+      </button>
+    </div>
+  </dialog>
 
   <!-- 保護者ゲートダイアログ（掛け算認証） -->
   <dialog id="parent-gate-dialog" class="hero-dialog" aria-labelledby="gate-title" closedby="any">
@@ -108,6 +120,10 @@
               <span>音声ガイド（日本語 / 英語）</span>
             </label>
             <label class="toggle-item">
+              <input type="checkbox" id="chk-bgm">
+              <span>BGM音楽ループ</span>
+            </label>
+            <label class="toggle-item">
               <input type="checkbox" id="chk-reduced-motion">
               <span>アニメーションをひかえめにする</span>
             </label>
@@ -138,7 +154,7 @@
     <div class="hero-dialog-inner sleep-inner">
       <h2 id="sleep-title">🌙 おやすみ モード</h2>
       <div id="sleep-mech-slot" class="sleep-mech-slot"></div>
-      <p class="sleep-message">きょうは たくさん がんばったね！ レックス・ゼロ も ねむくなったよ。また あした あそぼうね！</p>
+      <p class="sleep-message">きょうは たくさん あそんだね！ レックス・ゼロ も ねむくなったよ。また あしたね！</p>
       <button type="button" id="btn-sleep-unlock" class="btn-toy btn-gold" autofocus>
         🔓 おとなが かいじょする
       </button>
@@ -148,7 +164,7 @@
   <!-- メカ進化お祝いモーダル（子ども向け漢字ゼロ） -->
   <dialog id="evolve-dialog" class="hero-dialog evolve-dialog" aria-labelledby="evolve-title" closedby="any">
     <div class="hero-dialog-inner evolve-inner">
-      <h2 id="evolve-title">🎉 メカ しんか だいせいこう！</h2>
+      <h2 id="evolve-title">🎉 レックス・ゼロ しんか！</h2>
       <div id="evolve-mech-slot" class="evolve-mech-slot"></div>
       <p id="evolve-desc" class="sleep-message"></p>
       <button type="button" id="btn-evolve-ok" class="btn-toy btn-emerald" autofocus>

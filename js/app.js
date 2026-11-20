@@ -1,13 +1,16 @@
-import { DOCK_META, MECH_PARTS } from './data.js';
-import { el } from './dom.js';
+import { ATTRACTIONS, MECH_PARTS } from './data.js';
 import {
+  advanceStarGauge,
   formatTimeRemaining,
   generateParentChallenge,
-  getDailyMissions,
+  generateRaceWave,
   getEvolutionStage,
   getLocalDateKey,
+  pickNewSticker,
   sanitizeProfile,
+  snapClockHandAngle,
 } from './core.js';
+import { el } from './dom.js';
 import {
   clearAllMedia,
   deleteMediaItem,
@@ -23,29 +26,28 @@ import {
 import { sound } from './sound.js';
 import { voice } from './voice.js';
 import { createMechSvg } from './mech-svg.js';
+import { bounceElement, burstAtElement, burstParticles, setFxReducedMotion, shakeElement } from './fx.js';
 
-import { mount as mountHiragana } from './games/hiragana.js';
-import { mount as mountMath } from './games/math-clock.js';
-import { mount as mountRobo } from './games/logic-robo.js';
-import { mount as mountEnglish } from './games/english.js';
-import { mount as mountScanner } from './games/scanner.js';
-import { mount as mountStudio } from './games/studio.js';
-import { mount as mountHabits } from './games/habits-mech.js';
+import { mount as mountMonsterKana } from './games/monster-kana.js';
+import { mount as mountTurboMath } from './games/turbo-math.js';
+import { mount as mountRoboRescue } from './games/robo-rescue.js';
+import { mount as mountHeroKitchen } from './games/hero-kitchen.js';
+import { mount as mountMagicStudio } from './games/magic-studio.js';
+import { mount as mountHabitBase } from './games/habit-base.js';
 
-const DOCK_MOUNTERS = {
-  hiragana: mountHiragana,
-  math: mountMath,
-  robo: mountRobo,
-  english: mountEnglish,
-  scanner: mountScanner,
-  studio: mountStudio,
-  habits: mountHabits,
+const ATTRACTION_MOUNTERS = {
+  'monster-kana': mountMonsterKana,
+  'turbo-math': mountTurboMath,
+  'robo-rescue': mountRoboRescue,
+  'hero-kitchen': mountHeroKitchen,
+  'magic-studio': mountMagicStudio,
+  'habit-base': mountHabitBase,
 };
 
-const VALID_DOCK_IDS = new Set(DOCK_META.map((d) => d.id));
+const VALID_ATTRACTION_IDS = new Set(ATTRACTIONS.map((a) => a.id));
 
 let state = loadState();
-let currentView = 'home'; // 'home' | dockId
+let currentView = 'home'; // 'home' | attractionId
 let activeCleanup = null;
 let deferredInstallPrompt = null;
 
@@ -59,16 +61,23 @@ let sleepActive = false;
 let gateChallenge = generateParentChallenge();
 let gatePurpose = 'parent'; // 'parent' | 'unlock-sleep'
 let resetConfirmStep = false;
+let capsuleLocked = false;
 
 // DOM refs
 const appMain = document.getElementById('app-main');
 const btnHome = document.getElementById('btn-home');
+const btnBgm = document.getElementById('btn-bgm');
 const btnMute = document.getElementById('btn-mute');
 const btnParent = document.getElementById('btn-parent');
 const hudEnergyVal = document.getElementById('hud-energy-val');
 const hudTimerVal = document.getElementById('hud-timer-val');
 const pillTimer = document.getElementById('pill-timer');
-const bubbleText = document.getElementById('companion-bubble-text');
+const starNodes = [...document.querySelectorAll('.hud-star')];
+
+const capsuleDialog = document.getElementById('capsule-dialog');
+const capsuleStage = document.getElementById('capsule-stage');
+const capsuleCaption = document.getElementById('capsule-caption');
+const btnCapsuleOk = document.getElementById('btn-capsule-ok');
 
 const parentGateDialog = document.getElementById('parent-gate-dialog');
 const gateQuestionEl = document.getElementById('gate-question');
@@ -86,6 +95,7 @@ const btnResetTimer = document.getElementById('btn-reset-timer');
 const btnTestSleep = document.getElementById('btn-test-sleep');
 const chkSound = document.getElementById('chk-sound');
 const chkVoice = document.getElementById('chk-voice');
+const chkBgm = document.getElementById('chk-bgm');
 const chkReducedMotion = document.getElementById('chk-reduced-motion');
 const parentStatsBox = document.getElementById('parent-stats-box');
 const btnExportJson = document.getElementById('btn-export-json');
@@ -102,11 +112,6 @@ const evolveMechSlot = document.getElementById('evolve-mech-slot');
 const evolveDesc = document.getElementById('evolve-desc');
 const btnEvolveOk = document.getElementById('btn-evolve-ok');
 
-// Sound & Voice initialization
-voice.setBubbleListener((txt) => {
-  if (bubbleText) bubbleText.textContent = txt;
-});
-
 window.addEventListener(
   'pointerdown',
   () => {
@@ -117,13 +122,24 @@ window.addEventListener(
 
 function syncAudioAndMotionPrefs() {
   sound.setMuted(!state.soundEnabled);
+  sound.setBgmEnabled(Boolean(state.bgmEnabled));
   voice.setEnabled(state.voiceEnabled);
+  setFxReducedMotion(Boolean(state.reducedMotion));
   document.body.classList.toggle('reduced-motion', Boolean(state.reducedMotion));
   btnMute.textContent = state.soundEnabled || state.voiceEnabled ? '🔊' : '🔇';
+  btnBgm.textContent = state.bgmEnabled ? '🎵' : '🎶';
+  btnBgm.classList.toggle('is-bgm-on', Boolean(state.bgmEnabled));
 }
 
 function updateHud() {
   hudEnergyVal.textContent = String(state.energy);
+  const stars = Number(state.stars) || 0;
+  starNodes.forEach((node, idx) => {
+    const lit = idx < stars;
+    node.textContent = lit ? '⭐' : '☆';
+    node.classList.toggle('is-lit', lit);
+  });
+
   if (state.timerMinutes <= 0) {
     hudTimerVal.textContent = '∞';
     pillTimer.classList.remove('is-sunset');
@@ -152,16 +168,63 @@ function showEvolutionCelebration(evoStage) {
       stage: evoStage.level,
       colorId: state.mechColor,
       partId: state.mechPart,
-      mood: 'happy',
-      size: 180,
+      mood: 'roar',
+      size: 190,
     })
   );
-  evolveDesc.textContent = `レベル ${evoStage.level}「${evoStage.name}」に パワーアップしたよ！ ${evoStage.comment}`;
+  evolveDesc.textContent = `レベル ${evoStage.level}「${evoStage.name}」に パワーアップ！`;
   sound.playTransform();
   voice.speakJa(`すごいぞ！ レックス・ゼロ が ${evoStage.name} に しんかしたよ！`);
   if (!evolveDialog.open) {
     evolveDialog.showModal();
   }
+}
+
+function openCapsuleDialog(sticker) {
+  if (capsuleDialog.open || sleepDialog.open) return;
+  capsuleLocked = true;
+  let taps = 0;
+  btnCapsuleOk.classList.add('hidden');
+  capsuleCaption.textContent = 'カプセルを 3かい タップして わろう！';
+
+  const orbBtn = el('button', {
+    type: 'button',
+    class: 'gacha-capsule-orb',
+    'aria-label': 'カプセルを タップして あける',
+  }, [
+    el('span', { class: 'gacha-orb-half-top' }),
+    el('span', { class: 'gacha-orb-band' }),
+    el('span', { class: 'gacha-orb-core', text: '🎁' }),
+  ]);
+
+  orbBtn.addEventListener('click', () => {
+    if (!capsuleLocked) return;
+    taps += 1;
+    if (taps < 3) {
+      sound.playCapsuleTap(taps);
+      shakeElement(orbBtn);
+      burstAtElement(orbBtn, { count: 14, preset: 'stars' });
+      capsuleCaption.textContent = `あと ${3 - taps}かい！`;
+      return;
+    }
+
+    capsuleLocked = false;
+    sound.playCapsuleOpen();
+    burstAtElement(orbBtn, { count: 44, preset: 'confetti' });
+    const revealed = el('div', { class: 'capsule-revealed-sticker' }, [
+      el('div', { class: 'revealed-sticker-icon', text: sticker.icon }),
+      el('div', { class: 'revealed-sticker-name', text: `${sticker.name} シール ゲット！` }),
+    ]);
+    capsuleStage.replaceChildren(revealed);
+    bounceElement(revealed);
+    capsuleCaption.textContent = '🏝️ シール きち で はって あそべるよ！';
+    btnCapsuleOk.classList.remove('hidden');
+    voice.speakJa(`やったー！ ${sticker.name} シールを ゲット したよ！`);
+  });
+
+  capsuleStage.replaceChildren(orbBtn);
+  capsuleDialog.showModal();
+  voice.speakJa('ヒーロー カプセル とうじょう！ 3かい タップして わろう！');
 }
 
 function updateState(updater) {
@@ -172,33 +235,22 @@ function updateState(updater) {
   updateHud();
 }
 
-function awardEnergy(amount, meta = {}) {
+function awardSuccess(amount, meta = {}) {
   const add = Math.max(0, Math.floor(Number(amount) || 0));
   const beforeEvo = getEvolutionStage(state.energy);
 
   const todayKey = getLocalDateKey();
-  let working = rollDailyStateIfNeeded(state, todayKey);
-  let bonusEnergy = 0;
+  const working = rollDailyStateIfNeeded(state, todayKey);
+  const totalEnergy = working.energy + add;
 
-  const newMissionProgress = { ...working.missionProgress };
-  const newClaimed = { ...working.claimedMissions };
-
-  if (meta.missionId) {
-    const todayMissions = getDailyMissions(todayKey);
-    const mission = todayMissions.find((m) => m.id === meta.missionId);
-    if (mission) {
-      const nextCount = (newMissionProgress[mission.id] || 0) + 1;
-      newMissionProgress[mission.id] = nextCount;
-      if (nextCount >= mission.targetCount && !newClaimed[mission.id]) {
-        newClaimed[mission.id] = true;
-        bonusEnergy += mission.rewardEnergy;
-      }
-    }
+  const starRes = advanceStarGauge(working.stars);
+  let unlockedSticker = null;
+  const stickersSet = new Set(working.stickers || ['s01']);
+  if (starRes.capsuleReady) {
+    unlockedSticker = pickNewSticker([...stickersSet]);
+    stickersSet.add(unlockedSticker.id);
   }
 
-  const totalEnergy = working.energy + add + bonusEnergy;
-
-  // 解禁パーツ更新
   const unlockedSet = new Set(working.unlockedParts || ['none']);
   for (const part of MECH_PARTS) {
     if (totalEnergy >= part.unlockEnergy) {
@@ -207,7 +259,7 @@ function awardEnergy(amount, meta = {}) {
   }
 
   const newDockCounts = { ...working.dockCounts };
-  if (typeof meta.dockId === 'string' && VALID_DOCK_IDS.has(meta.dockId)) {
+  if (typeof meta.dockId === 'string' && VALID_ATTRACTION_IDS.has(meta.dockId)) {
     newDockCounts[meta.dockId] = (newDockCounts[meta.dockId] || 0) + 1;
   }
 
@@ -225,10 +277,10 @@ function awardEnergy(amount, meta = {}) {
   state = saveState({
     ...working,
     energy: totalEnergy,
+    stars: starRes.stars,
+    stickers: [...stickersSet],
     unlockedParts: [...unlockedSet],
     dockCounts: newDockCounts,
-    missionProgress: newMissionProgress,
-    claimedMissions: newClaimed,
     clearedHiragana: [...clearedHiraganaSet],
     completedRoboStages: [...roboStagesSet],
   });
@@ -239,18 +291,23 @@ function awardEnergy(amount, meta = {}) {
   }
 
   const afterEvo = getEvolutionStage(state.energy);
-  if (afterEvo.level > beforeEvo.level) {
-    setTimeout(() => showEvolutionCelebration(afterEvo), 450);
-  } else if (bonusEnergy > 0) {
-    sound.playCombo();
-    voice.speakJa(`きょうの しれい クリア！ ボーナス ${bonusEnergy} エネルギー ゲット！`);
+  if (unlockedSticker) {
+    setTimeout(() => {
+      if (!sleepDialog.open && !evolveDialog.open) openCapsuleDialog(unlockedSticker);
+    }, 450);
+  } else if (afterEvo.level > beforeEvo.level) {
+    setTimeout(() => {
+      if (!sleepDialog.open && !capsuleDialog.open) showEvolutionCelebration(afterEvo);
+    }, 450);
   }
 }
 
-const dockContext = {
+const gameContext = {
   getState: () => state,
+  getEvoLevel: () => getEvolutionStage(state.energy).level,
   updateState,
-  awardEnergy,
+  awardSuccess,
+  awardEnergy: awardSuccess,
   sound,
   voice,
   storage: {
@@ -279,8 +336,10 @@ function navigateTo(viewId) {
 
   if (viewId === 'home') {
     renderHomeView();
-  } else if (DOCK_MOUNTERS[viewId]) {
-    activeCleanup = DOCK_MOUNTERS[viewId](appMain, dockContext);
+  } else if (ATTRACTION_MOUNTERS[viewId]) {
+    const meta = ATTRACTIONS.find((a) => a.id === viewId);
+    if (meta?.voice) voice.speakJa(meta.voice);
+    activeCleanup = ATTRACTION_MOUNTERS[viewId](appMain, gameContext);
   } else {
     currentView = 'home';
     renderHomeView();
@@ -290,75 +349,58 @@ function navigateTo(viewId) {
 function renderHomeView() {
   state = rollDailyStateIfNeeded(state);
   const evo = getEvolutionStage(state.energy);
-  const todayMissions = getDailyMissions(getLocalDateKey());
-  voice.notifyBubble(`${state.childName} の ひみつきち！ どの ドックから あそぶ？`);
 
-  const layout = el('div', { class: 'home-layout' });
+  const island = el('div', { class: 'home-island' });
 
-  // Hero Deck
-  const heroCard = el('section', { class: 'panel-card home-hero' });
-  const mechBtn = el('button', {
+  // 中央：巨大T-REX相棒メカステージ
+  const heroStage = el('div', { class: 'island-hero-stage' });
+  let mechMood = 'idle';
+  const rexBtn = el('button', {
     type: 'button',
-    class: 'hero-mech-btn',
-    'aria-label': 'レックス・ゼロに タッチして あいさつ',
+    class: 'rex-center-btn',
+    'aria-label': 'レックス・ゼロに タッチして ほえる',
     onClick: () => {
-      sound.playCombo();
-      voice.speakJa(`${state.childName}！ きょうも いっしょに たのしく べんきょう しようぜ！`);
-      mechBtn.replaceChildren(
-        createMechSvg({
-          stage: evo.level,
-          colorId: state.mechColor,
-          partId: state.mechPart,
-          mood: 'happy',
-          size: 168,
-        })
-      );
+      sound.playRoar();
+      mechMood = 'roar';
+      renderRex();
+      bounceElement(rexBtn);
+      burstAtElement(rexBtn, { count: 28, preset: 'fire' });
+      voice.speakJa(`ガオー！ ${state.childName}！ どこで あそぶ？`);
       setTimeout(() => {
-        if (currentView === 'home' && mechBtn.isConnected) {
-          mechBtn.replaceChildren(
-            createMechSvg({
-              stage: evo.level,
-              colorId: state.mechColor,
-              partId: state.mechPart,
-              mood: 'idle',
-              size: 168,
-            })
-          );
+        if (currentView === 'home' && rexBtn.isConnected) {
+          mechMood = 'idle';
+          renderRex();
         }
-      }, 1100);
+      }, 950);
     },
-  }, [
-    createMechSvg({
-      stage: evo.level,
-      colorId: state.mechColor,
-      partId: state.mechPart,
-      mood: 'idle',
-      size: 168,
-    }),
-  ]);
+  });
 
-  const greetingBox = el('div', { class: 'hero-greeting' }, [
-    el('h1', { text: `${state.childName} の ひみつきち！` }),
-    el('div', { class: 'hero-stage-badge', text: `${evo.badge} レベル ${evo.level}：${evo.name}` }),
-    el('div', { class: 'energy-meter' }, [
-      el('div', { class: 'energy-meter-fill', style: `width:${evo.progressPct}%` }),
-    ]),
-    el('div', {
-      class: 'energy-meter-label',
-      text: evo.isMax
-        ? `⚡ さいきょう レベル かんせい！（${evo.energy}⚡）`
-        : `⚡ つぎの しんか まで あと ${evo.remainingToNext} エネルギー！`,
-    }),
+  function renderRex() {
+    rexBtn.replaceChildren(
+      createMechSvg({
+        stage: evo.level,
+        colorId: state.mechColor,
+        partId: state.mechPart,
+        mood: mechMood,
+        size: 196,
+      })
+    );
+  }
+  renderRex();
+
+  const badgeRow = el('div', { class: 'island-badge-row' }, [
+    el('span', { class: 'island-pill', text: `${evo.badge} ${evo.name}` }),
+    el('span', { class: 'island-pill', text: `🏅 ${(state.stickers || []).length} / 30` }),
     deferredInstallPrompt
       ? el('button', {
           type: 'button',
-          class: 'btn-toy btn-emerald',
-          text: '📲 アプリとして インストール',
+          class: 'btn-toy btn-emerald mini-toy-btn',
+          text: '📲 アプリいれる',
           onClick: async () => {
             if (!deferredInstallPrompt) return;
             sound.playTap();
-            deferredInstallPrompt.prompt();
             try {
+              deferredInstallPrompt.prompt();
               await deferredInstallPrompt.userChoice;
             } catch {
               // Ignore
@@ -370,63 +412,29 @@ function renderHomeView() {
       : null,
   ]);
 
-  heroCard.append(mechBtn, greetingBox);
+  heroStage.append(rexBtn, badgeRow);
 
-  // Daily 3 Missions
-  const missionsCard = el('section', { class: 'panel-card missions-strip' }, [
-    el('h2', { text: '⭐ きょうの ヒーロー しれい（3つ クリアで ボーナス！）' }),
-  ]);
-  const missionsGrid = el('div', { class: 'missions-grid' });
-  todayMissions.forEach((m) => {
-    const cur = Math.min(m.targetCount, state.missionProgress?.[m.id] || 0);
-    const claimed = Boolean(state.claimedMissions?.[m.id]);
-    missionsGrid.appendChild(
-      el('button', {
-        type: 'button',
-        class: `mission-card-btn ${claimed ? 'is-claimed' : ''}`,
-        onClick: () => {
-          sound.playTap();
-          navigateTo(m.dockId);
-        },
-      }, [
-        el('span', { class: 'mission-icon', text: m.icon, 'aria-hidden': 'true' }),
-        el('div', { class: 'mission-info' }, [
-          el('div', { class: 'mission-title', text: m.title }),
-          el('div', {
-            class: 'mission-progress',
-            text: claimed ? `✅ クリア！ +${m.rewardEnergy}⚡` : `しんこう：${cur} / ${m.targetCount}（+${m.rewardEnergy}⚡）`,
-          }),
-        ]),
-      ])
-    );
-  });
-  missionsCard.appendChild(missionsGrid);
-
-  // 7 Dock Launcher Grid
-  const docksGrid = el('section', { class: 'docks-grid', 'aria-label': '7つの ドック' });
-  DOCK_META.forEach((dock) => {
-    docksGrid.appendChild(
-      el('button', {
-        type: 'button',
-        class: 'dock-launch-card',
-        style: `--dock-accent:${dock.color}`,
-        onClick: () => {
-          sound.playTap();
-          navigateTo(dock.id);
-        },
-      }, [
-        el('div', { class: 'dock-card-top' }, [
-          el('span', { class: 'dock-card-icon', text: dock.icon, 'aria-hidden': 'true' }),
-          el('span', { class: 'dock-card-go', text: 'しゅつどう ▶' }),
-        ]),
-        el('div', { class: 'dock-card-title', text: dock.title }),
-        el('div', { class: 'dock-card-desc', text: dock.desc }),
-      ])
-    );
+  // 周囲6大アトラクションボタン（極大アイコン＋短いひらがなのみ）
+  const ring = el('section', { class: 'attractions-grid', 'aria-label': 'あそびの エリア' });
+  ATTRACTIONS.forEach((attr) => {
+    const tile = el('button', {
+      type: 'button',
+      class: 'attraction-toy-btn',
+      style: { '--attr-color': attr.color, '--attr-bg': attr.bg },
+      onClick: () => {
+        sound.playPop();
+        burstAtElement(tile, { count: 16, preset: 'stars' });
+        navigateTo(attr.id);
+      },
+    }, [
+      el('span', { class: 'attr-icon', text: attr.icon, 'aria-hidden': 'true' }),
+      el('span', { class: 'attr-label', text: attr.label }),
+    ]);
+    ring.appendChild(tile);
   });
 
-  layout.append(heroCard, missionsCard, docksGrid);
-  appMain.replaceChildren(layout);
+  island.append(heroStage, ring);
+  appMain.replaceChildren(island);
 }
 
 // Sleep Mode
@@ -447,7 +455,7 @@ function openSleepDialog() {
   );
   updateHud();
   sleepDialog.showModal();
-  voice.speakJa('きょうは たくさん がんばったね！ レックス・ゼロ も おやすみ するよ。また あしたね！');
+  voice.speakJa('きょうは たくさん あそんだね！ レックス・ゼロ も おやすみ するよ。また あしたね！');
 }
 
 sleepDialog.addEventListener('cancel', (e) => {
@@ -463,6 +471,14 @@ sleepDialog.addEventListener('close', () => {
   }
 });
 
+capsuleDialog.addEventListener('cancel', (e) => {
+  if (capsuleLocked) e.preventDefault();
+});
+capsuleDialog.addEventListener('close', () => {
+  capsuleLocked = false;
+  capsuleDialog.returnValue = '';
+});
+
 evolveDialog.addEventListener('close', () => {
   evolveDialog.returnValue = '';
 });
@@ -475,7 +491,6 @@ parentDialog.addEventListener('close', () => {
   parentDialog.returnValue = '';
 });
 
-// Parent Gate
 function openParentGate(purpose = 'parent') {
   gatePurpose = purpose;
   gateChallenge = generateParentChallenge();
@@ -495,6 +510,7 @@ async function openParentDialog() {
   parentTimerSelectEl.value = String(state.timerMinutes);
   chkSound.checked = Boolean(state.soundEnabled);
   chkVoice.checked = Boolean(state.voiceEnabled);
+  chkBgm.checked = Boolean(state.bgmEnabled);
   chkReducedMotion.checked = Boolean(state.reducedMotion);
 
   const evo = getEvolutionStage(state.energy);
@@ -504,20 +520,16 @@ async function openParentDialog() {
     scans = await listMediaItems('scans');
     drawings = await listMediaItems('drawings');
   } catch {
-    // Fallback gracefully if IndexedDB is unavailable
+    // Ignore
   }
 
   const statsEntries = [
     { label: '累計エネルギー', val: `${state.energy} ⚡` },
     { label: 'メカレベル', val: `Lv.${evo.level} ${evo.name}` },
+    { label: 'ヒーローシール', val: `${(state.stickers || []).length} / 30 枚` },
     { label: 'ひらがな習得', val: `${(state.clearedHiragana || []).length} / 46 文字` },
-    { label: 'ロボ攻略', val: `${(state.completedRoboStages || []).length} / 12 ステージ` },
-    { label: 'カメラ図鑑', val: `${scans.length} 件` },
-    { label: 'おえかき保存', val: `${drawings.length} 件` },
-    ...DOCK_META.map((d) => ({
-      label: d.shortTitle,
-      val: `${state.dockCounts?.[d.id] || 0} 回`,
-    })),
+    { label: 'ロボ迷路攻略', val: `${(state.completedRoboStages || []).length} / 12` },
+    { label: 'カメラ / おえかき', val: `${scans.length} / ${drawings.length}` },
   ];
 
   parentStatsBox.replaceChildren(
@@ -538,7 +550,14 @@ async function openParentDialog() {
 btnHome.addEventListener('click', () => {
   sound.playTap();
   navigateTo('home');
-  voice.speakJa(`${state.childName} の ひみつきち！ つぎは なにを する？`);
+  voice.speakJa(`${state.childName}！ つぎは どこで あそぶ？`);
+});
+
+btnBgm.addEventListener('click', () => {
+  sound.unlock();
+  const nextBgm = !state.bgmEnabled;
+  updateState((prev) => ({ ...prev, bgmEnabled: nextBgm }));
+  sound.playTap();
 });
 
 btnMute.addEventListener('click', () => {
@@ -556,6 +575,12 @@ btnParent.addEventListener('click', () => {
   openParentGate('parent');
 });
 
+btnCapsuleOk.addEventListener('click', () => {
+  sound.playTap();
+  capsuleLocked = false;
+  capsuleDialog.close('ok');
+});
+
 btnSleepUnlock.addEventListener('click', () => {
   sound.playTap();
   openParentGate('unlock-sleep');
@@ -566,8 +591,9 @@ btnGateCancel.addEventListener('click', () => {
 });
 
 btnGateSubmit.addEventListener('click', () => {
-  const val = Number(gateInputEl.value.trim());
-  if (val !== gateChallenge.answer) {
+  const rawVal = gateInputEl.value.trim();
+  const val = rawVal ? Number(rawVal) : NaN;
+  if (!Number.isFinite(val) || val !== gateChallenge.answer) {
     sound.playTryAgain();
     gateErrorEl.textContent = '答えが違います。もう一度お試しください。';
     gateInputEl.focus();
@@ -628,6 +654,10 @@ chkVoice.addEventListener('change', () => {
   updateState((prev) => ({ ...prev, voiceEnabled: chkVoice.checked }));
 });
 
+chkBgm.addEventListener('change', () => {
+  updateState((prev) => ({ ...prev, bgmEnabled: chkBgm.checked }));
+});
+
 chkReducedMotion.addEventListener('change', () => {
   updateState((prev) => ({ ...prev, reducedMotion: chkReducedMotion.checked }));
 });
@@ -677,7 +707,7 @@ btnResetAll.addEventListener('click', async () => {
   try {
     await clearAllMedia();
   } catch {
-    // Continue resetting state even if media DB clear fails
+    // Ignore
   }
   state = resetStateStorage();
   resetPlayTimer(state.timerMinutes);
@@ -691,7 +721,7 @@ btnEvolveOk.addEventListener('click', () => {
   evolveDialog.close('ok');
 });
 
-// 1秒ごとの自律おやすみタイマー（バックグラウンド経過も実時刻で補正）
+// 1秒ごとの自律おやすみタイマー
 setInterval(() => {
   const now = Date.now();
   const elapsedSec = Math.max(0, Math.floor((now - lastTickMs) / 1000));
@@ -703,7 +733,7 @@ setInterval(() => {
   timerRemainingSec = Math.max(0, timerRemainingSec - elapsedSec);
   if (timerRemainingSec > 0 && timerRemainingSec <= 180 && !sunsetWarned) {
     sunsetWarned = true;
-    voice.speakJa('あと 3ぷんで おやすみの じかんだよ！ そろそろ しまいの じゅんびしようね！');
+    voice.speakJa('あと 3ぷんで おやすみの じかんだよ！');
   }
   updateHud();
   if (timerRemainingSec === 0) {
@@ -716,6 +746,14 @@ if (
   'serviceWorker' in navigator &&
   (location.protocol === 'https:' || location.hostname === 'localhost' || location.hostname === '127.0.0.1')
 ) {
+  const hadController = Boolean(navigator.serviceWorker.controller);
+  let swRefreshing = false;
+  navigator.serviceWorker.addEventListener('controllerchange', () => {
+    if (hadController && !swRefreshing) {
+      swRefreshing = true;
+      window.location.reload();
+    }
+  });
   navigator.serviceWorker.register('./sw.js').catch(() => {});
 }
 
@@ -735,27 +773,25 @@ syncAudioAndMotionPrefs();
 updateHud();
 navigateTo('home');
 
-// 組み込みセルフテスト（実機検証用）
+// 組み込みセルフテスト
 window.__runSelfTest = async function runSelfTest() {
   const snapshot = typeof structuredClone === 'function' ? structuredClone(state) : JSON.parse(JSON.stringify(state));
   const prevView = currentView;
   const results = [];
 
   try {
-    // 1. Core checks
-    const evo0 = getEvolutionStage(0);
-    const evo600 = getEvolutionStage(600);
-    const missions = getDailyMissions('2026-11-21');
+    const starTest = advanceStarGauge(2);
+    const waveTest = generateRaceWave(2);
+    const clockTest = snapClockHandAngle(90);
     const clean = sanitizeProfile({ childName: '<script>x</script>てすと' });
     const coreOk =
-      evo0.level === 1 &&
-      evo600.level === 5 &&
-      missions.length === 3 &&
+      starTest.capsuleReady === true &&
+      waveTest.lanes.length === 3 &&
+      clockTest.hour === 3 &&
       !clean.childName.includes('<');
-    results.push({ name: 'core_logic', ok: coreOk });
+    results.push({ name: 'core_v2_logic', ok: coreOk });
 
-    // 2. Mount & unmount Home + all 7 docks and check overflow
-    const views = ['home', ...DOCK_META.map((d) => d.id)];
+    const views = ['home', ...ATTRACTIONS.map((a) => a.id)];
     for (const v of views) {
       navigateTo(v);
       await new Promise((r) => setTimeout(r, 40));
@@ -771,7 +807,6 @@ window.__runSelfTest = async function runSelfTest() {
       });
     }
 
-    // 3. Dialog open/close check
     parentGateDialog.showModal();
     const gateOpened = parentGateDialog.open;
     parentGateDialog.close();
@@ -780,14 +815,20 @@ window.__runSelfTest = async function runSelfTest() {
     const sleepOpened = sleepDialog.open;
     sleepDialog.close();
 
+    capsuleDialog.showModal();
+    const capOpened = capsuleDialog.open;
+    capsuleLocked = false;
+    capsuleDialog.close();
+
     results.push({
       name: 'native_dialogs',
-      ok: gateOpened && !parentGateDialog.open && sleepOpened && !sleepDialog.open,
+      ok: gateOpened && !parentGateDialog.open && sleepOpened && !sleepDialog.open && capOpened && !capsuleDialog.open,
     });
   } finally {
     state = saveState(snapshot);
     syncAudioAndMotionPrefs();
     sleepActive = false;
+    capsuleLocked = false;
     document.body.classList.remove('sunset-mode');
     navigateTo(prevView || 'home');
   }
