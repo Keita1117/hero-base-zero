@@ -1,4 +1,4 @@
-const CACHE_NAME = 'hero-base-zero-v1';
+const CACHE_NAME = 'hero-base-zero-v2';
 
 const PRECACHE_URLS = [
   './',

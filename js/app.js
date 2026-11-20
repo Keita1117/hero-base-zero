@@ -47,6 +47,7 @@ const VALID_DOCK_IDS = new Set(DOCK_META.map((d) => d.id));
 let state = loadState();
 let currentView = 'home'; // 'home' | dockId
 let activeCleanup = null;
+let deferredInstallPrompt = null;
 
 // Autonomous sleep timer state
 let timerRemainingSec = state.timerMinutes > 0 ? state.timerMinutes * 60 : 0;
@@ -348,6 +349,25 @@ function renderHomeView() {
         ? `⚡ さいきょう レベル かんせい！（${evo.energy}⚡）`
         : `⚡ つぎの しんか まで あと ${evo.remainingToNext} エネルギー！`,
     }),
+    deferredInstallPrompt
+      ? el('button', {
+          type: 'button',
+          class: 'btn-toy btn-emerald',
+          text: '📲 アプリとして インストール',
+          onClick: async () => {
+            if (!deferredInstallPrompt) return;
+            sound.playTap();
+            deferredInstallPrompt.prompt();
+            try {
+              await deferredInstallPrompt.userChoice;
+            } catch {
+              // Ignore
+            }
+            deferredInstallPrompt = null;
+            renderHomeView();
+          },
+        })
+      : null,
   ]);
 
   heroCard.append(mechBtn, greetingBox);
@@ -696,10 +716,19 @@ if (
   'serviceWorker' in navigator &&
   (location.protocol === 'https:' || location.hostname === 'localhost' || location.hostname === '127.0.0.1')
 ) {
-  window.addEventListener('load', () => {
-    navigator.serviceWorker.register('./sw.js').catch(() => {});
-  });
+  navigator.serviceWorker.register('./sw.js').catch(() => {});
 }
+
+// PWA インストールプロンプト対応
+window.addEventListener('beforeinstallprompt', (e) => {
+  e.preventDefault();
+  deferredInstallPrompt = e;
+  if (currentView === 'home') renderHomeView();
+});
+window.addEventListener('appinstalled', () => {
+  deferredInstallPrompt = null;
+  if (currentView === 'home') renderHomeView();
+});
 
 // 初期起動
 syncAudioAndMotionPrefs();
